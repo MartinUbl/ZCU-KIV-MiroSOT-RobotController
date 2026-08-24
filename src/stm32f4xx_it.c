@@ -47,6 +47,6 @@ void SPI1_IRQHandler(void) {
 
 void EXTI1_IRQHandler(void)
 {
-    HAL_GPIO_TogglePin(LED_Blue_GPIO_Port, LED_Blue_Pin);
-  HAL_GPIO_EXTI_IRQHandler(nRF_IRQ_Pin);
+    HAL_GPIO_TogglePin(LED_Green_GPIO_Port, LED_Green_Pin);
+    HAL_GPIO_EXTI_IRQHandler(nRF_IRQ_Pin);
 }

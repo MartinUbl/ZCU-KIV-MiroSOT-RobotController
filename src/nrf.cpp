@@ -1,4 +1,4 @@
-#include "stm32f1xx.h"
+#include "stm32f4xx.h"
 #include "nrf.h"
 #include "logger.h"
 #include "command_queue.h"
@@ -6,7 +6,16 @@
 extern SPI_HandleTypeDef hspi1;
 
 constexpr int RF_Channel = 76;
-static const uint8_t ADDR5[5] = { 0xE7, 0xE7, 0xE7, 0xE7, 0xE7 };
+static const uint8_t Pipe_Addresses[8][5] = {
+    { 0xE7, 0xE7, 0xE7, 0xE7, 0xE7 }, // pipe 0
+    { 0xC2, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 1
+    { 0xC3, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 2
+    { 0xC4, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 3
+    { 0xC5, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 4
+    { 0xC6, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 5
+    { 0xC7, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 6
+    { 0xC8, 0xC2, 0xC2, 0xC2, 0xC2 }, // pipe 7
+};
 
 static inline void CSN_Low(void) {
     HAL_GPIO_WritePin(nRF_ChipSelect_GPIO_Port, nRF_ChipSelect_Pin, GPIO_PIN_RESET);
@@ -98,7 +107,7 @@ enum NRF_REGISTERS {
     NRF_REG_FEATURE     = 0x1D
 };
 
-void nrf_prx_init(void)
+void nrf_prx_init(int address)
 {
     CE_Low();
 
@@ -115,7 +124,8 @@ void nrf_prx_init(void)
     // set address width to 5 bytes
     nrf_write_reg(NRF_REG_SETUP_AW, 0x03);
     // set address for pipe0
-    nrf_write_reg_multi(NRF_REG_RX_ADDR_P0, ADDR5, 5);
+    const uint8_t dongle_pipe = ((uint8_t)address) & 0x07;
+    nrf_write_reg_multi(NRF_REG_RX_ADDR_P0, Pipe_Addresses[dongle_pipe], 5);
 
     // set RF channel
     nrf_write_reg(NRF_REG_RF_CH, RF_Channel);
@@ -144,12 +154,16 @@ bool nrf_poll_rx(void) {
 
     // write NOP, read STATUS
     const uint8_t status = nrf_cmd(NRF_CMD_NOP);
+    //if (status != 0 && status != 0x0E) {
+    //    u2_printf("nRF STATUS: 0x%02X\r\n", status);
+    //}
 
     // RX data ready
     if (status & 0x40) {
         while (1) {
             // read FIFO status
             const uint8_t fifo = nrf_read_reg(NRF_REG_FIFO_STATUS);
+            //u2_printf("FIFO status: 0x%02X\r\n", fifo);
 
             // RX FIFO empty? break - we've read all data
             if (fifo & 0x01) {
@@ -170,11 +184,12 @@ bool nrf_poll_rx(void) {
 
             const uint8_t opcode = pl[0];
             switch (opcode) {
-                case 0x00: u2_printf("RX: Ping\r\n"); break;
-                case 0x01: u2_printf("RX: Set speed=%u\r\n", pl[1]); break;
-                case 0x02: u2_printf("RX: Move distance=%u\r\n", (int16_t)((uint16_t)pl[1] | ((uint16_t)pl[2] << 8))); break;
-                case 0x03: u2_printf("RX: Turn angle=%d\r\n", (int16_t)((uint16_t)pl[1] | ((uint16_t)pl[2] << 8))); break;
-                case 0x04: u2_printf("RX: Stop\r\n"); break;
+                case 0x00: u2_printf(">>>>>>>>>>>>>>>>> RX: Initialize mode=%u\r\n", pl[1]); break;
+                case 0x01: u2_printf(">>>>>>>>>>>>>>>>> RX: Set speed=%u\r\n", pl[1]); break;
+                case 0x02: u2_printf(">>>>>>>>>>>>>>>>> RX: Move distance=%u\r\n", (int16_t)((uint16_t)pl[1] | ((uint16_t)pl[2] << 8))); break;
+                case 0x03: u2_printf(">>>>>>>>>>>>>>>>> RX: Turn angle=%d\r\n", (int16_t)((uint16_t)pl[1] | ((uint16_t)pl[2] << 8))); break;
+                case 0x04: u2_printf(">>>>>>>>>>>>>>>>> RX: Stop\r\n"); break;
+                //case 0x05: u2_printf(">>>>>>>>>>>>>>>>> RX: Immediate L=%u R=%u T=%u\r\n", pl[1], pl[2], pl[3]); break;
             }
 
             if (opcode == 0x04) {
@@ -182,6 +197,8 @@ bool nrf_poll_rx(void) {
             }
 
             command_queue_push(pl);
+
+            pl[0] = 0xFF; // mark as processed
         }
 
         // clear RX data ready flag

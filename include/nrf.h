@@ -5,5 +5,5 @@
 
 #include <stdbool.h>
 
-void nrf_prx_init(void);
+void nrf_prx_init(int address);
 bool nrf_poll_rx(void);
